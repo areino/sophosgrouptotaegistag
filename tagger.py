@@ -55,6 +55,39 @@ def get_bearer_token_taegis(client_id: str, client_secret: str) -> str:
         raise ValueError(f"No access_token in auth response: {response.json()}")
     return token
 
+def get_sophos_tags(endpoint_id: str, tenant_id: str ) -> str:
+    url = "https://api-" + creds.sophos_data_region + ".central.sophos.com/endpoint/v1/endpoints/" + endpoint_id
+    error = ""
+    
+    try:
+        resp = requests.get(
+            url,
+            headers={
+                "Authorization": "Bearer " + token_sophos,
+                "X-Tenant-ID": tenant_id,
+                "Accept": "application/json",
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+    except requests.exceptions.ConnectionError as e:
+        error = "Connection error"
+    except requests.exceptions.Timeout as e:
+        error = "Timeout"
+    except requests.exceptions.HTTPError as e:
+        error = "HTTP error"
+    except requests.exceptions.RequestException as e:
+        error = "Eequest error"
+
+    if len(error)>0:
+        log("-- Host " + endpoint_id + " - " + error)
+        return("")
+    
+    tags = resp.json().get("tags")      
+  
+    return(tags)
+
+
 def get_sophos_group(endpoint_id: str, tenant_id: str ) -> str:
     url = "https://api-" + creds.sophos_data_region + ".central.sophos.com/endpoint/v1/endpoints/" + endpoint_id
     error = ""
@@ -73,6 +106,7 @@ def get_sophos_group(endpoint_id: str, tenant_id: str ) -> str:
     except requests.exceptions.ConnectionError as e:
         error = "Connection error"
     except requests.exceptions.Timeout as e:
+        print(e)
         error = "Timeout"
     except requests.exceptions.HTTPError as e:
         error = "HTTP error"
@@ -150,7 +184,6 @@ def set_taegis_tag(asset: dict, hostid: str, tagname: str):
     """
 
     data = run_graphql(token_taegis, QUERY, variables={"hostid": hostid, "tagname": tagname})
-    log("-- Set tag [" + tagname + "] for asset " + asset["hostId"] + " - " + asset["hostnames"][0]["hostname"])
     
 
 def get_taegis_assets() -> dict:
@@ -207,12 +240,15 @@ if __name__ == "__main__":
     assets = get_taegis_assets()
     log("-- Retrieved " + str(len(assets)) + " Sophos assets from Taegis")
 
+    log("Getting tags for corresponding assets in Sophos Central")
     for asset in assets:
-        sleep(1)
-        groupname = get_sophos_group(asset["hostId"], creds.sophos_tenant_id ) 
-        if len(groupname)>0:
-            set_taegis_tag(asset, asset["hostId"], groupname)
-    
+        ##sleep(1)
+        tags = get_sophos_tags(asset["hostId"], creds.sophos_tenant_id ) 
+        if len(tags)>0:
+            log("-- Set tag [" + tags[0]["key"] + "] for asset " + asset["hostId"] + " - " + asset["hostnames"][0]["hostname"])
+            set_taegis_tag(asset, asset["hostId"], tags[0]["key"])
+        else:
+            log("-- No tags defined for asset " + asset["hostId"] + " - " + asset["hostnames"][0]["hostname"])
 
     
     
